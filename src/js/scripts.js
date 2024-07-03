@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { Player, PlayerController, ThirdPersonCamera } from "./player.js";
+import TWEEN from '@tweenjs/tween.js';
 
+const textureLoader = new THREE.TextureLoader();
 // Renderer setup
 const renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setSize(window.innerWidth-7, window.innerHeight-7);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
@@ -25,33 +25,25 @@ const camera = new THREE.PerspectiveCamera(
 const orbitControls = new OrbitControls(camera, renderer.domElement);
 camera.position.set(0, 2, 10);
 orbitControls.update();
-
-var player = new Player(
-    new ThirdPersonCamera(
-        camera, new THREE.Vector3(-5, 2, 0), new THREE.Vector3(0, 0, 0)
-    ),
-    new PlayerController(),
-    scene,
-    10
-);
-
-scene.add(player);
-
+camera.position.z = 7;
 
 // Add lights
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(10, 10, 10);
+directionalLight.position.set(0, 0, 0);
 directionalLight.castShadow = true;
 scene.add(directionalLight);
 
 const ambientLight = new THREE.AmbientLight(0x404040);
 scene.add(ambientLight);
 
-const axesHelper = new THREE.AxesHelper(5);
-scene.add(axesHelper);
+// const axesHelper = new THREE.AxesHelper(5);
+// scene.add(axesHelper);
 
+const roadTexture = textureLoader.load('sand.jpg');
+roadTexture.wrapS = THREE.RepeatWrapping;
+roadTexture.wrapT = THREE.RepeatWrapping;
+roadTexture.repeat.set(10, 10);
 
-const textureLoader = new THREE.TextureLoader();
 const sandTexture = textureLoader.load('path_to_your_sand_texture.jpg');
 sandTexture.wrapS = THREE.RepeatWrapping;
 sandTexture.wrapT = THREE.RepeatWrapping;
@@ -68,9 +60,9 @@ scene.add(ground);
 // Jalan 1
 function createRoad(x, z) {
     const roadGeometry = new THREE.PlaneGeometry(100, 10);
-    const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const roadMaterial = new THREE.MeshStandardMaterial({ map: roadTexture });
     const road = new THREE.Mesh(roadGeometry, roadMaterial);
-
+        
     road.rotation.x = -Math.PI / 2;
     road.position.set(x, 0.01, z); // Set the position of the road
     road.receiveShadow = true;
@@ -103,15 +95,15 @@ function createCactus(x, z) {
 }
 
 const cactusPositions = [
-    [15, -15],
-    [-5, 10],
-    [20, -30],
-    [30, -31],
-    [-20, -5],
-    [5, 5],
-    [25, 13],
-    [-25, 23],
-    [10, -20],
+    [15, -15], 
+    [-5, 10], 
+    [20, -30], 
+    [30, -31], 
+    [-20, -5], 
+    [5, 5], 
+    [25, 13], 
+    [-25, 23], 
+    [10, -20], 
     [-15, 7]
 ];
 
@@ -129,15 +121,15 @@ function createStone(x, z) {
 }
 
 const stonePositions = [
-    [-26, 21],
-    [16, 16],
-    [31, -31],
-    [6, 6],
-    [21, -21],
-    [-6, -6],
-    [26, 26],
-    [-21, -16],
-    [-16, 11],
+    [-26, 21], 
+    [16, 16], 
+    [31, -31], 
+    [6, 6], 
+    [21, -21], 
+    [-6, -6], 
+    [26, 26], 
+    [-21, -16], 
+    [-16, 11], 
     [11, -11]
 ];
 
@@ -150,7 +142,7 @@ function createHouse(x, z) {
     // Walls
     const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
     const wallGeometry = new THREE.BoxGeometry(10, 5, 0.2);
-
+    
     const wall1 = new THREE.Mesh(wallGeometry, wallMaterial);
     wall1.position.set(0, 2.5, 5);
     wall1.castShadow = true;
@@ -203,7 +195,7 @@ function createHouse(x, z) {
         transparent: true,
         opacity: 0.5
     });
-
+    
     const window1 = new THREE.Mesh(windowGeometry, windowMaterial);
     window1.position.set(2.5, 3, 5);
     window1.castShadow = true;
@@ -223,6 +215,7 @@ function createHouse(x, z) {
     window4.position.set(-2.5, 3, -5);
     window4.castShadow = true;
     house.add(window4);
+
 
     // Bed
     const bedFrameGeometry = new THREE.BoxGeometry(3, 0.5, 5);
@@ -272,20 +265,23 @@ const keys = {
     s: false,
     d: false,
     e: false,
+    q: false,
     r: false,
-    t: false
+    t: false,
 };
 
 function moveCamera() {
     const speed = 0.1;
-    // if (keys.w) camera.position.z -= speed;
-    // if (keys.s) camera.position.z += speed;
-    // if (keys.a) camera.position.x -= speed;
-    // if (keys.d) camera.position.x += speed;
-    if (keys.e) camera.rotation.z -= speed + 0.3; // rotate
+    if (keys.w) camera.position.z -= speed;
+    if (keys.s) camera.position.z += speed;
+    if (keys.a) camera.position.x -= speed;
+    if (keys.d) camera.position.x += speed;
+    if (keys.e) camera.rotation.z -= speed + 0.3 ; // rotate
     if (keys.q) camera.rotation.z += speed + 0.3; // rotate
-    if (keys.r) camera.rotation.y -= speed + 0.3; // yaw
+    if (keys.r) camera.rotation.y -= speed + 0.3 ; // yaw
     if (keys.t) camera.rotation.y += speed + 0.3; // yaw
+    if (keys.f) camera.rotation.x -= speed + 0.3 ; // pitch
+    if (keys.g) camera.rotation.x += speed + 0.3; // pitch
 
 }
 
@@ -299,6 +295,8 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 't') keys.t = true;
     if (event.key === 'r') keys.r = true;
     if (event.key === 't') keys.t = true;
+    if (event.key === 'f') keys.f = true;
+    if (event.key === 'g') keys.g = true;
 });
 
 document.addEventListener('keyup', (event) => {
@@ -311,12 +309,49 @@ document.addEventListener('keyup', (event) => {
     if (event.key === 't') keys.t = false;
     if (event.key === 'r') keys.r = false;
     if (event.key === 't') keys.t = false;
+    if (event.key === 'f') keys.f = false;
+    if (event.key === 'g') keys.g = false;
+});
+
+const tween1 = new TWEEN.Tween(camera.position)
+    .to({ x: 10, y: 19, z: 10 }, 5000)
+    .easing(TWEEN.Easing.Quadratic.InOut);
+
+const tween2 = new TWEEN.Tween(camera.position)
+    .to({ x: -10, y: 15, z: -10 }, 5000)
+    .easing(TWEEN.Easing.Quadratic.InOut);
+
+const tween3 = new TWEEN.Tween(camera.position)
+    .to({ x: 0, y: 10, z: 0 }, 5000)
+    .easing(TWEEN.Easing.Quadratic.InOut);
+
+tween1.chain(tween2);
+tween2.chain(tween3);
+tween3.chain(tween1);
+
+let isCinematic = true;
+tween1.start();
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'c') {
+        isCinematic = !isCinematic;
+        if (isCinematic) {
+            tween1.start();
+        } else {
+            TWEEN.removeAll();
+            orbitControls.enabled = true;
+        }
+    } 
 });
 
 // Animation loop
-var clock = new THREE.Clock();
 function animate() {
-    moveCamera();
+    if (isCinematic) {
+        TWEEN.update();
+        orbitControls.enabled = false;
+    } else {
+        moveCamera();
+    }
 
     // Sun and light animation
     const time = Date.now() * 0.0005;
@@ -324,10 +359,9 @@ function animate() {
     const sunY = Math.cos(time) * 20;
     sun.position.set(sunX, sunY, -20);
     directionalLight.position.copy(sun.position);
-    directionalLight.intensity = Math.max(5, Math.cos(time) + 5);
+    directionalLight.intensity = Math.max(0.5, Math.cos(time) + 0.5);
 
     renderer.render(scene, camera);
-    player.update(clock.getDelta());
     orbitControls.update();
 }
 
