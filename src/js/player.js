@@ -10,12 +10,15 @@ export class Player {
         this.scene = scene;
         this.speed = speed;
         this.state = "idle";
-        this.rotationVector = new THREE.Vector3(0, 0, -0.2);
+        this.cameraRotationY = 0;
+        this.cameraRotationZ = 0;
+        this.rotationVector = new THREE.Vector3(0, 0, 0);
         this.animations = {};
         this.lastRotation = 0;
-
+        this.rotationSpeed = Math.PI / 2;
+        this.currentRotation = new THREE.Euler(0, 0, 0);
         this.camera.setup(new THREE.Vector3(0, 0, 0), this.rotationVector);
-
+        this.boundingBox = new THREE.Box3(new THREE.Vector3(), new THREE.Vector3());
         // this.mesh = new THREE.Mesh(
         //     new THREE.BoxGeometry(1,1,1),
         //     new THREE.MeshPhongMaterial({color: 0xFF1111})
@@ -60,27 +63,44 @@ export class Player {
         });
     }
 
-    update(dt) {
+    updateBoundingBox() {
+        if (this.mesh) {
+            this.boundingBox.setFromObject(this.mesh);
+        }
+    }
+
+    checkCollision(boundingBoxes) {
+        for (let i = 0; i < boundingBoxes.length; i++) {
+            if (this.boundingBox.intersectsBox(boundingBoxes[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    update(dt, boundingBoxes) {
         if (this.mesh && this.animations) {
+            this.updateBoundingBox();
+            const currentPos = this.mesh.position.clone();
+
             this.lastRotation = this.mesh.rotation.y;
             var direction = new THREE.Vector3(0, 0, 0);
 
-            if (this.controller.keys['forward']) {
-                direction.x = 1;
-                this.mesh.rotation.y = Math.PI / 2;
+
+            if (this.controller.keys["forward"]) {
+                direction.z += this.speed * dt;
             }
-            if (this.controller.keys['backward']) {
-                direction.x = -1;
-                this.mesh.rotation.y = -Math.PI / 2;
+            if (this.controller.keys["backward"]) {
+                direction.z -= this.speed * dt;
             }
-            if (this.controller.keys['left']) {
-                direction.z = -1;
-                this.mesh.rotation.y = Math.PI;
+            // console.log(direction.z);
+            if (this.controller.keys["left"]) {
+                this.currentRotation.y += this.rotationSpeed * dt * 1.8;
             }
-            if (this.controller.keys['right']) {
-                direction.z = 1;
-                this.mesh.rotation.y = 0;
+            if (this.controller.keys["right"]) {
+                this.currentRotation.y -= this.rotationSpeed * dt * 1.8;
             }
+
             this.lastRotation = this.mesh.rotation.y;
             // console.log(direction.length())  
             if (direction.length() == 0) {
@@ -101,31 +121,64 @@ export class Player {
                 }
             }
 
-            if (this.controller.mouseDown) {
-                var dtMouse = this.controller.deltaMousePos;
-                var dtMouse2 = this.controller.deltaMousePos;
-                dtMouse.x = dtMouse.x / Math.PI;
-                dtMouse.y = dtMouse.y / Math.PI;
-
-                this.rotationVector.y += dtMouse.x * dt * 1000;
-                this.rotationVector.z += dtMouse.y * dt * 1000;
-
+            if (this.controller.keys["peekLeft"]) {
+                this.cameraRotationZ = Math.min(
+                    this.cameraRotationZ + this.rotationSpeed * dt,
+                    15 * (Math.PI / 180)
+                );
+            } else if (this.controller.keys["peekRight"]) {
+                this.cameraRotationZ = Math.max(
+                    this.cameraRotationZ - this.rotationSpeed * dt,
+                    -15 * (Math.PI / 180)
+                );
+            } else {
+                // If no peek keys are pressed, reset cameraRotationZ to zero
+                if (this.cameraRotationZ > 0) {
+                    this.cameraRotationZ = Math.max(this.cameraRotationZ - this.rotationSpeed * dt, 0);
+                } else if (this.cameraRotationZ < 0) {
+                    this.cameraRotationZ = Math.min(this.cameraRotationZ + this.rotationSpeed * dt, 0);
+                }
             }
 
-            // Person not spinning on mousedown
-            if (this.controller.keyDown) {
-                this.mesh.rotation.y += this.rotationVector.y;
+
+            this.currentRotation.y += this.rotationVector.y * dt; // add dtmousex
+            this.currentRotation.z += this.rotationVector.z * dt;
+
+            // Reset
+            this.rotationVector.set(0, 0, 0);
+
+            // Apply player rotation to direction vector
+            direction.applyAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                this.currentRotation.y
+            );
+
+            if (this.isFpp) {
+                direction.applyAxisAngle(
+                    new THREE.Vector3(0, 3, 0),
+                    this.cameraRotationY
+                );
             }
 
-            var forwardVector = new THREE.Vector3(1, 0, 0);
-            var rightVector = new THREE.Vector3(0, 0, 1);
-            forwardVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotationVector.y);
-            rightVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotationVector.y);
+            this.mesh.position.add(direction);
+            this.mesh.rotation.copy(this.currentRotation);
 
-            this.mesh.position.add(forwardVector.multiplyScalar(dt * this.speed * direction.x));
-            this.mesh.position.add(rightVector.multiplyScalar(dt * this.speed * direction.z));
+            this.camera.setup(
+                this.mesh.position,
+                this.currentRotation,
+                this.cameraRotationY,
+                this.cameraRotationZ,
+                this.xLevel,
+                this.isZooming
+            );
 
-            this.camera.setup(this.mesh.position, this.rotationVector);
+
+            this.updateBoundingBox();
+            if (this.checkCollision(boundingBoxes)) {
+                this.mesh.position.copy(currentPos);
+            } else {
+                this.camera.setup(this.mesh.position, this.currentRotation, this.cameraRotationY, this.cameraRotationZ);
+            }
 
             if (this.mixer) {
                 this.mixer.update(dt);
@@ -136,13 +189,17 @@ export class Player {
 
     }
 
+    setCamera(camera) {
+        this.camera = camera;
+    }
+
 
     getMesh() {
         return this.mesh;
     }
 
     getPosition() {
-        return this.mesh.position.x;
+        return this.mesh.position;
     }
 
 }
@@ -155,6 +212,8 @@ export class PlayerController {
             "backward": false,
             "left": false,
             "right": false,
+            "peekLeft": false,
+            "peekRight": false,
         }
         this.mousePos = new THREE.Vector2();
         this.mouseDown = false;
@@ -162,9 +221,9 @@ export class PlayerController {
         this.deltaMousePos = new THREE.Vector2();
         document.addEventListener('keydown', (e) => this.onKeyDown(e), false);
         document.addEventListener('keyup', (e) => this.onKeyUp(e), false);
-        document.addEventListener('mousemove', (e) => this.onMouseMove(e), false);
-        document.addEventListener('mousedown', (e) => this.onMouseDown(e), false);
-        document.addEventListener('mouseup', (e) => this.onMouseUp(e), false);
+        // document.addEventListener('mousemove', (e) => this.onMouseMove(e), false);
+        // document.addEventListener('mousedown', (e) => this.onMouseDown(e), false);
+        // document.addEventListener('mouseup', (e) => this.onMouseUp(e), false);
     }
     onMouseDown(event) {
         this.mouseDown = true;
@@ -202,6 +261,14 @@ export class PlayerController {
                 this.keys['right'] = true;
                 this.keyDown = true;
                 break;
+            case 39:
+                this.keys['peekRight'] = true;
+                this.keyDown = true;
+                break;
+            case 37:
+                this.keys['peekLeft'] = true;
+                this.keyDown = true;
+                break;
         }
     }
     onKeyUp(event) {
@@ -226,6 +293,14 @@ export class PlayerController {
                 this.keys['right'] = false;
                 this.keyDown = false;
                 break;
+            case 39:
+                this.keys['peekRight'] = false;
+                this.keyDown = false;
+                break;
+            case 37:
+                this.keys['peekLeft'] = false;
+                this.keyDown = false;
+                break;
         }
     }
 
@@ -233,39 +308,62 @@ export class PlayerController {
 }
 
 export class ThirdPersonCamera {
-    constructor(camera, positionOffSet, targetOffSet) {
+    constructor(camera, positionOffSet, targetOffSet, isFpp = false) {
         this.camera = camera;
         this.positionOffSet = positionOffSet;
         this.targetOffSet = targetOffSet;
+        this.isFpp = isFpp;
     }
-    setup(target, angle) {
-        var temp = new THREE.Vector3(0, 0, 0);
+
+    setup(
+        target,
+        rotation,
+        cameraRotationY = 0,
+        cameraRotationZ = 0,
+        xLevel = 0,
+        isZooming = false
+    ) {
+        var temp = new THREE.Vector3();
         temp.copy(this.positionOffSet);
-        temp.applyAxisAngle(new THREE.Vector3(angle.x, 1, 0), angle.y);
-        temp.applyAxisAngle(new THREE.Vector3(angle.y, 0, 1), angle.z);
-        temp.addVectors(target, temp);
+        temp.applyAxisAngle(
+            new THREE.Vector3(0, 1, 0),
+            rotation.y + cameraRotationY
+        );
+        temp.add(target);
         this.camera.position.copy(temp);
-        temp = new THREE.Vector3(0, 0, 0);
-        temp.addVectors(target, this.targetOffSet);
-        this.camera.lookAt(temp);
+        if (!isZooming) {
+            if (!this.isFpp) {
+                var lookAtTarget = new THREE.Vector3();
+                lookAtTarget.addVectors(target, this.targetOffSet);
+                this.camera.lookAt(lookAtTarget);
+                // this.isFpp = false;
+            } else {
+                // this.isFpp = true;
+                //Pitch roll yaw
+                this.camera.rotation.order = "YXZ"; // Ensure correct order of rotations
+                this.camera.rotation.x = -xLevel; // Pitch
+                this.camera.rotation.y = rotation.y + Math.PI - cameraRotationY; // Yaw
+                this.camera.rotation.z = cameraRotationZ; // Roll
+            }
+        }
     }
 }
 
-export class FirstPersonCamera {
-    constructor(camera, positionOffSet, targetOffSet) {
-        this.camera = camera;
-        this.positionOffSet = positionOffSet;
-        this.targetOffSet = targetOffSet;
-    }
-    setup(target, angle) {
-        var temp = new THREE.Vector3(0, 0, 0);
-        temp.copy(this.positionOffSet);
-        temp.applyAxisAngle(new THREE.Vector3(angle.x, 1, 0), angle.y);
-        temp.applyAxisAngle(new THREE.Vector3(angle.y, 0, 1), angle.z);
-        temp.addVectors(target, temp);
-        this.camera.position.copy(temp);
-        temp = new THREE.Vector3(0, 0, 0);
-        temp.addVectors(target, this.targetOffSet);
-        this.camera.lookAt(temp);
-    }
-}
+// export class FirstPersonCamera {
+//     constructor(camera, positionOffSet, targetOffSet) {
+//         this.camera = camera;
+//         this.positionOffSet = positionOffSet;
+//         this.targetOffSet = targetOffSet;
+//     }
+//     setup(target, angle) {
+//         var temp = new THREE.Vector3(0, 0, 0);
+//         temp.copy(this.positionOffSet);
+//         temp.applyAxisAngle(new THREE.Vector3(angle.x, 1, 0), angle.y);
+//         temp.applyAxisAngle(new THREE.Vector3(angle.y, 0, 1), angle.z);
+//         temp.addVectors(target, temp);
+//         this.camera.position.copy(temp);
+//         temp = new THREE.Vector3(0, 0, 0);
+//         temp.addVectors(target, this.targetOffSet);
+//         this.camera.lookAt(temp);
+//     }
+// }

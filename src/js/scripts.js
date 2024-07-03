@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { Player, PlayerController, ThirdPersonCamera } from "./player.js";
 import TWEEN from '@tweenjs/tween.js';
+
+const clock = new THREE.Clock();
+let alpacaMixer1, alpacaMixer2, alpacaMixer3;
 
 const textureLoader = new THREE.TextureLoader();
 // Renderer setup
 const renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth-7, window.innerHeight-7);
+renderer.setSize(window.innerWidth - 7, window.innerHeight - 7);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
@@ -22,10 +27,24 @@ const camera = new THREE.PerspectiveCamera(
     1000
 );
 
-const orbitControls = new OrbitControls(camera, renderer.domElement);
-camera.position.set(0, 2, 10);
-orbitControls.update();
-camera.position.z = 7;
+// const orbitControls = new OrbitControls(camera, renderer.domElement);
+
+// Not affected karna updated trs pake yg TPP Camera
+camera.position.set(0, 0, 0);
+
+// orbitControls.update();
+
+var cameraTPP = new ThirdPersonCamera(camera, new THREE.Vector3(0, 3.7, -6), new THREE.Vector3(0, 0, 0));
+var cameraFPP = new ThirdPersonCamera(camera, new THREE.Vector3(0, 2.5, 0.5), new THREE.Vector3(0, 0, 0), true);
+var player = new Player(
+    cameraTPP,
+    new PlayerController(),
+    scene,
+    13
+);
+
+scene.add(player);
+
 
 // Add lights
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -44,7 +63,7 @@ roadTexture.wrapS = THREE.RepeatWrapping;
 roadTexture.wrapT = THREE.RepeatWrapping;
 roadTexture.repeat.set(10, 10);
 
-const sandTexture = textureLoader.load('path_to_your_sand_texture.jpg');
+const sandTexture = textureLoader.load('sand.jpg');
 sandTexture.wrapS = THREE.RepeatWrapping;
 sandTexture.wrapT = THREE.RepeatWrapping;
 sandTexture.repeat.set(10, 10);
@@ -62,7 +81,7 @@ function createRoad(x, z) {
     const roadGeometry = new THREE.PlaneGeometry(100, 10);
     const roadMaterial = new THREE.MeshStandardMaterial({ map: roadTexture });
     const road = new THREE.Mesh(roadGeometry, roadMaterial);
-        
+
     road.rotation.x = -Math.PI / 2;
     road.position.set(x, 0.01, z); // Set the position of the road
     road.receiveShadow = true;
@@ -83,180 +102,190 @@ const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
 const sun = new THREE.Mesh(sunGeometry, sunMaterial);
 scene.add(sun);
 
+let boundingBoxes = [];
+const objectLoader = new GLTFLoader().setPath("../models/");
 // Cacti (simple cylinders)
-const cactusMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
 
-function createCactus(x, z) {
-    const cactusGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3, 12);
-    const cactus = new THREE.Mesh(cactusGeometry, cactusMaterial);
-    cactus.position.set(x, 1.5, z);
-    cactus.castShadow = true;
-    scene.add(cactus);
-}
 
-const cactusPositions = [
-    [15, -15], 
-    [-5, 10], 
-    [20, -30], 
-    [30, -31], 
-    [-20, -5], 
-    [5, 5], 
-    [25, 13], 
-    [-25, 23], 
-    [10, -20], 
-    [-15, 7]
-];
+function createStaticObject(x, y, z, rotation, filename, scaleX, scaleY, scaleZ) {
+    objectLoader.load(filename, function (gltf) {
+        const model = gltf.scene;
 
-cactusPositions.forEach(pos => createCactus(pos[0], pos[1]));
+        model.scale.set(scaleX, scaleY, scaleZ);
+        model.position.set(x, y, z);
+        model.rotation.y = rotation;
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.receiveShadow = true;
+                child.castShadow = true;
+            }
+        });
+        renderer.compileAsync(model, camera, scene);
 
-// Stones
-const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x8B8B83 });
+        scene.add(model);
+        const originalBoundingBox = new THREE.Box3().setFromObject(model);
 
-function createStone(x, z) {
-    const stoneGeometry = new THREE.DodecahedronGeometry(1);
-    const stone = new THREE.Mesh(stoneGeometry, stoneMaterial);
-    stone.position.set(x, 0.5, z);
-    stone.castShadow = true;
-    scene.add(stone);
-}
+        // Create a smaller bounding box
+        const size = new THREE.Vector3();
+        originalBoundingBox.getSize(size);
 
-const stonePositions = [
-    [-26, 21], 
-    [16, 16], 
-    [31, -31], 
-    [6, 6], 
-    [21, -21], 
-    [-6, -6], 
-    [26, 26], 
-    [-21, -16], 
-    [-16, 11], 
-    [11, -11]
-];
+        const center = new THREE.Vector3();
+        originalBoundingBox.getCenter(center);
 
-stonePositions.forEach(pos => createStone(pos[0], pos[1]));
+        const reductionFactor = 0.55; // 50% smaller in each dimension
+        const smallerBox = new THREE.Box3(
+            new THREE.Vector3(
+                center.x - (size.x * reductionFactor / 2),
+                center.y - (size.y * reductionFactor / 2),
+                center.z - (size.z * reductionFactor / 2)
+            ),
+            new THREE.Vector3(
+                center.x + (size.x * reductionFactor / 2),
+                center.y + (size.y * reductionFactor / 2),
+                center.z + (size.z * reductionFactor / 2)
+            )
+        );
 
-// Detailed House
-function createHouse(x, z) {
-    const house = new THREE.Group();
+        boundingBoxes.push(smallerBox);
 
-    // Walls
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-    const wallGeometry = new THREE.BoxGeometry(10, 5, 0.2);
-    
-    const wall1 = new THREE.Mesh(wallGeometry, wallMaterial);
-    wall1.position.set(0, 2.5, 5);
-    wall1.castShadow = true;
-    house.add(wall1);
+        // Boounding box helper
+        // const helper = new THREE.Box3Helper(smallerBox, 0xff0000);
+        // scene.add(helper);
 
-    const wall2 = new THREE.Mesh(wallGeometry, wallMaterial);
-    wall2.position.set(0, 2.5, -5);
-    wall2.castShadow = true;
-    house.add(wall2);
-
-    const wall3 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 10), wallMaterial);
-    wall3.position.set(5, 2.5, 0);
-    wall3.castShadow = true;
-    house.add(wall3);
-
-    const wall4 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 10), wallMaterial);
-    wall4.position.set(-5, 2.5, 0);
-    wall4.castShadow = true;
-    house.add(wall4);
-
-    // Roof
-    const roofGeometry = new THREE.ConeGeometry(7, 2, 4);
-    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x8B0000 });
-    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-    roof.position.set(0, 6, 0);
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    house.add(roof);
-
-    // Floor
-    const floorGeometry = new THREE.PlaneGeometry(10, 10);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xDEB887 });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    house.add(floor);
-
-    // Door
-    const doorGeometry = new THREE.BoxGeometry(1.5, 3, 0.1);
-    const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
-    const door = new THREE.Mesh(doorGeometry, doorMaterial);
-    door.position.set(0, 1.5, 5);
-    door.castShadow = true;
-    house.add(door);
-
-    // Windows
-    const windowGeometry = new THREE.BoxGeometry(1, 1, 0.1);
-    const windowMaterial = new THREE.MeshStandardMaterial({
-        color: 0x87CEEB,
-        transparent: true,
-        opacity: 0.5
     });
-    
-    const window1 = new THREE.Mesh(windowGeometry, windowMaterial);
-    window1.position.set(2.5, 3, 5);
-    window1.castShadow = true;
-    house.add(window1);
 
-    const window2 = new THREE.Mesh(windowGeometry, windowMaterial);
-    window2.position.set(-2.5, 3, 5);
-    window2.castShadow = true;
-    house.add(window2);
-
-    const window3 = new THREE.Mesh(windowGeometry, windowMaterial);
-    window3.position.set(2.5, 3, -5);
-    window3.castShadow = true;
-    house.add(window3);
-
-    const window4 = new THREE.Mesh(windowGeometry, windowMaterial);
-    window4.position.set(-2.5, 3, -5);
-    window4.castShadow = true;
-    house.add(window4);
-
-
-    // Bed
-    const bedFrameGeometry = new THREE.BoxGeometry(3, 0.5, 5);
-    const bedFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-    const bedFrame = new THREE.Mesh(bedFrameGeometry, bedFrameMaterial);
-    bedFrame.position.set(2.5, 0.25, -2.5);
-    bedFrame.castShadow = true;
-    house.add(bedFrame);
-
-    const bedMattressGeometry = new THREE.BoxGeometry(2.8, 0.3, 4.8);
-    const bedMattressMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-    const bedMattress = new THREE.Mesh(bedMattressGeometry, bedMattressMaterial);
-    bedMattress.position.set(2.5, 0.65, -2.5);
-    bedMattress.castShadow = true;
-    house.add(bedMattress);
-
-    house.position.set(x, 0, z);
-    scene.add(house);
 }
-
-const housePositions = [
-    [-30, 10]
+const alpacaPositions = [
+    [8, 0, -15, 90, "Alpaca.glb", 0.85, 0.85, 0.85],
+    [-5, 0, 8, 90, "Alpaca.glb", 0.85, 0.85, 0.85],
+    [15, 0, 8, -90, "Alpaca.glb", 0.85, 0.85, 0.85]
 ];
 
-housePositions.forEach(pos => createHouse(pos[0], pos[1]));
+objectLoader.load("Alpaca.glb", function (gltf) {
+    const model = gltf.scene;
 
-// Person object (fbx model)
-const loader = new FBXLoader();
-loader.load('models/person_model.fbx', (fbx) => {
-    const person = fbx.scene;
-    person.position.set(0, 0, 0);
-    person.traverse((child) => {
+    model.scale.set(0.85, 0.85, 0.85);
+    model.position.set(8, 0, -15);
+    model.traverse((child) => {
         if (child.isMesh) {
-            child.castShadow = true;
             child.receiveShadow = true;
+            child.castShadow = true;
         }
     });
-    scene.add(person);
-}, undefined, (error) => {
-    console.error('An error happened', error);
+    renderer.compileAsync(model, camera, scene);
+    scene.add(model);
+
+    const boundingBox = new THREE.Box3().setFromObject(model);
+    boundingBoxes.push(boundingBox);
+    // Boounding box helper
+    // const helper = new THREE.Box3Helper(smallerBox, 0xff0000);
+    // scene.add(helper);
+
+    const animation = gltf.animations;
+    alpacaMixer1 = new THREE.AnimationMixer(model);
+    const clip = THREE.AnimationClip.findByName(animation, "Eating");
+    const action = alpacaMixer1.clipAction(clip);
+    action.play();
+
 });
+
+
+objectLoader.load("Alpaca.glb", function (gltf) {
+    const model = gltf.scene;
+
+    model.scale.set(0.85, 0.85, 0.85);
+    model.position.set(-5, 0, 8);
+    model.rotation.y = 90;
+    model.traverse((child) => {
+        if (child.isMesh) {
+            child.receiveShadow = true;
+            child.castShadow = true;
+        }
+    });
+    renderer.compileAsync(model, camera, scene);
+    scene.add(model);
+
+    const boundingBox = new THREE.Box3().setFromObject(model);
+    boundingBoxes.push(boundingBox);
+    // Boounding box helper
+    // const helper = new THREE.Box3Helper(smallerBox, 0xff0000);
+    // scene.add(helper);
+
+    const animation = gltf.animations;
+    alpacaMixer2 = new THREE.AnimationMixer(model);
+    const clip = THREE.AnimationClip.findByName(animation, "Eating");
+    const action = alpacaMixer2.clipAction(clip);
+    action.play();
+
+});
+
+objectLoader.load("Alpaca.glb", function (gltf) {
+    const model = gltf.scene;
+
+    model.scale.set(0.85, 0.85, 0.85);
+    model.position.set(15, 0, 8);
+    model.traverse((child) => {
+        if (child.isMesh) {
+            child.receiveShadow = true;
+            child.castShadow = true;
+        }
+    });
+    renderer.compileAsync(model, camera, scene);
+    scene.add(model);
+
+    const boundingBox = new THREE.Box3().setFromObject(model);
+    boundingBoxes.push(boundingBox);
+    // Boounding box helper
+    // const helper = new THREE.Box3Helper(smallerBox, 0xff0000);
+    // scene.add(helper);
+
+    const animation = gltf.animations;
+    alpacaMixer3 = new THREE.AnimationMixer(model);
+    const clip = THREE.AnimationClip.findByName(animation, "Idle_Headlow");
+    const action = alpacaMixer3.clipAction(clip);
+    action.play();
+
+});
+
+
+const cactusPositions = [
+    [20, 3.7, -30, 0, "BigCactus.glb", 10, 14, 10],
+    [30, 3.7, -31, 0, "BigCactus.glb", 10, 14, 10],
+    [-20, 3.7, -5, 0, "BigCactus.glb", 10, 14, 10],
+    [5, 3.7, 5, 0, "BigCactus.glb", 10, 14, 10],
+    [25, 3.7, 13, 0, "BigCactus.glb", 10, 14, 10],
+    [-25, 3.7, 23, 0, "BigCactus.glb", 10, 14, 10],
+    [10, 3.7, -20, 0, "BigCactus.glb", 10, 14, 10],
+    [-15, 3.7, 7, 0, "BigCactus.glb", 10, 14, 10]
+];
+cactusPositions.forEach(param => createStaticObject(param[0], param[1], param[2], param[3], param[4], param[5], param[6], param[7]));
+
+const stonePositions = [
+    [-26, 0, 21, 0, "stone.glb", 3, 3, 3],
+    [16, 0, 16, 0, "stone.glb", 2, 2, 2],
+    [31, 0, -31, 0, "stone.glb", 2, 2, 2],
+    [6, 0, 6, 0, "stone.glb", 1.4, 1.4, 1.4],
+    [21, 0, -21, 0, "stone.glb", 3, 3, 3],
+    [-6, 0, -6, 0, "stone.glb", 3, 3, 3],
+    [26, 0, 26, 0, "stone.glb", 2, 2, 2],
+    [-21, 0, -16, 0, "stone.glb", 3, 3, 3],
+    [-16, 0, 11, 0, "stone.glb", 3, 3, 3],
+    [11, 0, -11, 0, "stone.glb", 2, 2, 2]
+];
+
+stonePositions.forEach(param => createStaticObject(param[0], param[1], param[2], param[3], param[4], param[5], param[6], param[7]));
+
+
+
+const pyramidPos = [
+    [0, 0, 35, 0, "Step Pyramid.glb", 55, 55, 55]
+];
+
+pyramidPos.forEach(param => createStaticObject(param[0], param[1], param[2], param[3], param[4], param[5], param[6], param[7]));
+
+
+
+var isFPP = false;
 
 // Camera movement controls
 const keys = {
@@ -268,6 +297,8 @@ const keys = {
     q: false,
     r: false,
     t: false,
+    v: false,
+    b: false,
 };
 
 function moveCamera() {
@@ -276,13 +307,14 @@ function moveCamera() {
     if (keys.s) camera.position.z += speed;
     if (keys.a) camera.position.x -= speed;
     if (keys.d) camera.position.x += speed;
-    if (keys.e) camera.rotation.z -= speed + 0.3 ; // rotate
+    if (keys.e) camera.rotation.z -= speed + 0.3; // rotate
     if (keys.q) camera.rotation.z += speed + 0.3; // rotate
-    if (keys.r) camera.rotation.y -= speed + 0.3 ; // yaw
+    if (keys.r) camera.rotation.y -= speed + 0.3; // yaw
     if (keys.t) camera.rotation.y += speed + 0.3; // yaw
-    if (keys.f) camera.rotation.x -= speed + 0.3 ; // pitch
+    if (keys.f) camera.rotation.x -= speed + 0.3; // pitch
     if (keys.g) camera.rotation.x += speed + 0.3; // pitch
-
+    if (keys.v) isFPP = true; // change to FPP
+    if (keys.b) isFPP = false; // change to FPP
 }
 
 document.addEventListener('keydown', (event) => {
@@ -297,6 +329,8 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 't') keys.t = true;
     if (event.key === 'f') keys.f = true;
     if (event.key === 'g') keys.g = true;
+    if (event.key === 'v') keys.v = true;
+    if (event.key === 'b') keys.b = true;
 });
 
 document.addEventListener('keyup', (event) => {
@@ -311,6 +345,8 @@ document.addEventListener('keyup', (event) => {
     if (event.key === 't') keys.t = false;
     if (event.key === 'f') keys.f = false;
     if (event.key === 'g') keys.g = false;
+    if (event.key === 'v') keys.v = false;
+    if (event.key === 'b') keys.b = false;
 });
 
 const tween1 = new TWEEN.Tween(camera.position)
@@ -329,7 +365,9 @@ tween1.chain(tween2);
 tween2.chain(tween3);
 tween3.chain(tween1);
 
-let isCinematic = true;
+// Set false to turn off cinematic
+let isCinematic = false;
+
 tween1.start();
 
 document.addEventListener('keydown', (event) => {
@@ -341,28 +379,41 @@ document.addEventListener('keydown', (event) => {
             TWEEN.removeAll();
             orbitControls.enabled = true;
         }
-    } 
+    }
 });
 
-// Animation loop
+
+
 function animate() {
+    const dt = clock.getDelta();
     if (isCinematic) {
         TWEEN.update();
-        orbitControls.enabled = false;
+        // orbitControls.enabled = false;
     } else {
         moveCamera();
     }
+    if (isFPP) {
+        player.setCamera(cameraFPP);
+    } else {
+        player.setCamera(cameraTPP);
+    }
+
+    if (alpacaMixer1) alpacaMixer1.update(dt);
+    if (alpacaMixer2) alpacaMixer2.update(dt);
+    if (alpacaMixer3) alpacaMixer3.update(dt);
+
 
     // Sun and light animation
-    const time = Date.now() * 0.0005;
+    const time = Date.now() * 0.000095;
     const sunX = Math.sin(time) * 55;
-    const sunY = Math.cos(time) * 20;
-    sun.position.set(sunX, sunY, -20);
+    const sunY = Math.cos(time) * 25;
+    sun.position.set(sunX, sunY, 20);
     directionalLight.position.copy(sun.position);
     directionalLight.intensity = Math.max(0.5, Math.cos(time) + 0.5);
 
     renderer.render(scene, camera);
-    orbitControls.update();
+    player.update(dt, boundingBoxes);
+    // orbitControls.update();
 }
 
 renderer.setAnimationLoop(animate);
