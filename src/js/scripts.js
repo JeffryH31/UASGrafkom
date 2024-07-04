@@ -27,12 +27,15 @@ const camera = new THREE.PerspectiveCamera(
     1000
 );
 
-// const orbitControls = new OrbitControls(camera, renderer.domElement);
+const orbitControls = new OrbitControls(camera, renderer.domElement);
+orbitControls.rotateSpeed = 1.5;  // Default is 1.0
+orbitControls.zoomSpeed = 2;    // Default is 1.2
+orbitControls.panSpeed = 1.6;    
+orbitControls.update();
 
 // Not affected karna updated trs pake yg TPP Camera
 camera.position.set(0, 0, 0);
 
-// orbitControls.update();
 
 var cameraTPP = new ThirdPersonCamera(camera, new THREE.Vector3(0, 3.7, -6), new THREE.Vector3(0, 0, 0));
 var cameraFPP = new ThirdPersonCamera(camera, new THREE.Vector3(0, 2.5, 0.5), new THREE.Vector3(0, 0, 0), true);
@@ -286,6 +289,7 @@ pyramidPos.forEach(param => createStaticObject(param[0], param[1], param[2], par
 
 
 var isFPP = false;
+var isFree = false;
 
 // Camera movement controls
 const keys = {
@@ -299,6 +303,7 @@ const keys = {
     t: false,
     v: false,
     b: false,
+    y: false,
 };
 
 function moveCamera() {
@@ -311,10 +316,12 @@ function moveCamera() {
     if (keys.q) camera.rotation.z += speed + 0.3; // rotate
     if (keys.r) camera.rotation.y -= speed + 0.3; // yaw
     if (keys.t) camera.rotation.y += speed + 0.3; // yaw
-    if (keys.f) camera.rotation.x -= speed + 0.3; // pitch
+    // if (keys.f) camera.rotation.x -= speed + 0.3; // pitch
     if (keys.g) camera.rotation.x += speed + 0.3; // pitch
     if (keys.v) isFPP = true; // change to FPP
     if (keys.b) isFPP = false; // change to FPP
+    if (keys.f) isFree = true; // change to FPP
+    if (keys.y) isFree = false; // change to FPP
 }
 
 document.addEventListener('keydown', (event) => {
@@ -331,6 +338,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'g') keys.g = true;
     if (event.key === 'v') keys.v = true;
     if (event.key === 'b') keys.b = true;
+    if (event.key === 'y') keys.y = true;
 });
 
 document.addEventListener('keyup', (event) => {
@@ -347,6 +355,7 @@ document.addEventListener('keyup', (event) => {
     if (event.key === 'g') keys.g = false;
     if (event.key === 'v') keys.v = false;
     if (event.key === 'b') keys.b = false;
+    if (event.key === 'y') keys.y = false;
 });
 
 const tween1 = new TWEEN.Tween(camera.position)
@@ -377,7 +386,7 @@ document.addEventListener('keydown', (event) => {
             tween1.start();
         } else {
             TWEEN.removeAll();
-            orbitControls.enabled = true;
+            // orbitControls.enabled = true;
         }
     }
 });
@@ -398,6 +407,12 @@ function animate() {
         player.setCamera(cameraTPP);
     }
 
+    if (isFree) {
+        orbitControls.enabled = true;
+    } else {
+        orbitControls.enabled = false;
+    }
+
     if (alpacaMixer1) alpacaMixer1.update(dt);
     if (alpacaMixer2) alpacaMixer2.update(dt);
     if (alpacaMixer3) alpacaMixer3.update(dt);
@@ -412,6 +427,7 @@ function animate() {
     directionalLight.intensity = Math.max(0.5, Math.cos(time) + 0.5);
 
     renderer.render(scene, camera);
+    if(!isFree)
     player.update(dt, boundingBoxes);
     // orbitControls.update();
 }
