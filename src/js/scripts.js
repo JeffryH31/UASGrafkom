@@ -135,7 +135,7 @@ function createStaticObject(x, y, z, rotation, filename, scaleX, scaleY, scaleZ)
         const center = new THREE.Vector3();
         originalBoundingBox.getCenter(center);
 
-        const reductionFactor = 0.55; // 50% smaller in each dimension
+        const reductionFactor = 0.82; // 82% from og size
         const smallerBox = new THREE.Box3(
             new THREE.Vector3(
                 center.x - (size.x * reductionFactor / 2),
@@ -152,8 +152,8 @@ function createStaticObject(x, y, z, rotation, filename, scaleX, scaleY, scaleZ)
         boundingBoxes.push(smallerBox);
 
         // Boounding box helper
-        // const helper = new THREE.Box3Helper(smallerBox, 0xff0000);
-        // scene.add(helper);
+        const helper = new THREE.Box3Helper(smallerBox, 0xff0000);
+        scene.add(helper);
 
     });
 
@@ -281,7 +281,7 @@ stonePositions.forEach(param => createStaticObject(param[0], param[1], param[2],
 
 
 const pyramidPos = [
-    [0, 0, 35, 0, "Step Pyramid.glb", 55, 55, 55]
+    [0, 8, 35, 0, "Step Pyramid.glb", 25, 25, 25]
 ];
 
 pyramidPos.forEach(param => createStaticObject(param[0], param[1], param[2], param[3], param[4], param[5], param[6], param[7]));
